@@ -14,7 +14,7 @@
         packages.default = pkgs.buildGoModule {
           pname = "zyncounter";
           version = "0.1.0";
-          src = ./.;
+          src = ./server/.;
           vendorHash = "sha256-dsmRXd5moOA08U2Hbi9Z3Hy1inZFiDOD9AMS56uk+8g=";
         };
 
