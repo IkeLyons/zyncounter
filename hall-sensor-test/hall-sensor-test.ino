@@ -1,9 +1,33 @@
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+#define SERVICE_UUID          "96bde720-973d-4f43-820b-0cd2ff8b666c"
+#define CHARACTERISTIC_UUID   "d5c94e7e-47e3-484d-897a-ea417b91b77a"
+
 const int ledPin = 2;
 const int hallSensorPin = 27;
 
 void setup()
 {
   Serial.begin(9600);
+
+  BLEDevice::init("Zyncounter");
+  BLEServer *pServer = BLEDevice::createServer();
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE
+  );
+
+  pCharacteristic->setValue("Test Out");
+  pService->start();
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
 
   pinMode(hallSensorPin, INPUT_PULLUP);
   pinMode(ledPin, OUTPUT);
