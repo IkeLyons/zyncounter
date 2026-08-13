@@ -11,8 +11,11 @@ struct Zyncounter: View {
     @State private var bleManager = BLEManager()
 
     var body: some View {
-        Text(bleManager.statusText)
-            .padding()
+        VStack {
+            Text(bleManager.statusText)
+            Text(bleManager.characteristicValue)
+        }
+        .padding()
     }
 }
 
