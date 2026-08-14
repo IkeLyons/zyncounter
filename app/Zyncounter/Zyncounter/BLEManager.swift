@@ -25,10 +25,14 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
         centralManager = CBCentralManager(delegate: self, queue: nil)
     }
 
+    private func startScanning() {
+        statusText = "Scanning..."
+        centralManager.scanForPeripherals(withServices: [Self.serviceUUID])
+    }
+
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if central.state == .poweredOn {
-            statusText = "Scanning..."
-            central.scanForPeripherals(withServices: [Self.serviceUUID])
+            startScanning()
         } else {
             statusText = "Bluetooth is off"
         }
@@ -47,9 +51,15 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
         peripheral.discoverServices([Self.serviceUUID])
     }
 
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        self.peripheral = nil
+        startScanning()
+    }
+
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        statusText = "Disconnected"
         characteristicValue = ""
+        self.peripheral = nil
+        startScanning()
     }
 }
 

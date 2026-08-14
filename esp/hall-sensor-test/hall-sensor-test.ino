@@ -13,12 +13,20 @@ const int buttonPin = 26;
 BLECharacteristic *pCharacteristic;
 int lastSensorState = -1;
 
+class ServerCallbacks: public BLEServerCallbacks {
+  void onDisconnect(BLEServer *pServer) {
+    Serial.println("Client disconnected, resuming advertising");
+    pServer->startAdvertising();
+  }
+};
+
 void setup()
 {
   Serial.begin(9600);
 
   BLEDevice::init("Zyncounter");
   BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
   BLEService *pService = pServer->createService(SERVICE_UUID);
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
