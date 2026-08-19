@@ -13,6 +13,7 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
     // Must match SERVICE_UUID / CHARACTERISTIC_UUID in esp/hall-sensor-test/hall-sensor-test.ino
     static let serviceUUID = CBUUID(string: "96BDE720-973D-4F43-820B-0CD2FF8B666C")
     static let characteristicUUID = CBUUID(string: "D5C94E7E-47E3-484D-897A-EA417B91B77A")
+    static let timeCharacteristicUUID = CBUUID(string: "7677590E-7808-4E26-84E1-DA269B480206")
 
     var statusText = "Not connected"
     var characteristicValue = ""
@@ -66,13 +67,20 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
 extension BLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         for service in peripheral.services ?? [] {
-            peripheral.discoverCharacteristics([Self.characteristicUUID], for: service)
+            peripheral.discoverCharacteristics([Self.characteristicUUID, Self.timeCharacteristicUUID], for: service)
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        guard let characteristic = service.characteristics?.first(where: { $0.uuid == Self.characteristicUUID }) else { return }
-        peripheral.setNotifyValue(true, for: characteristic)
+        if let characteristic = service.characteristics?.first(where: { $0.uuid == Self.characteristicUUID }) {
+            peripheral.setNotifyValue(true, for: characteristic)
+        }
+
+        if let timeCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.timeCharacteristicUUID }) {
+            var epochSeconds = Int64(Date().timeIntervalSince1970)
+            let data = Data(bytes: &epochSeconds, count: MemoryLayout<Int64>.size)
+            peripheral.writeValue(data, for: timeCharacteristic, type: .withResponse)
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
