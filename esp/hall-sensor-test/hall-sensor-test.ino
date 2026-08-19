@@ -7,6 +7,7 @@
 #define SERVICE_UUID "96bde720-973d-4f43-820b-0cd2ff8b666c"
 #define CHARACTERISTIC_UUID "d5c94e7e-47e3-484d-897a-ea417b91b77a"
 #define TIME_CHARACTERISTIC_UUID "7677590e-7808-4e26-84e1-da269b480206"
+#define MAX_EVENTS 200
 
 const int ledPin = 2;
 const int hallSensorPin = 27;
@@ -15,6 +16,18 @@ int highCount = 0;
 
 BLECharacteristic *pCharacteristic;
 int lastSensorState = -1;
+
+RTC_DATA_ATTR time_t popLog[MAX_EVENTS];
+RTC_DATA_ATTR int popCount = 0;
+
+void printPopLog() {
+  Serial.println(popCount);
+  for (int i = 0; i < popCount; i++) {
+    Serial.print(popLog[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+}
 
 class ServerCallbacks : public BLEServerCallbacks {
   void onDisconnect(BLEServer *pServer) {
@@ -101,6 +114,12 @@ void loop() {
       Serial.println("No Magnet");
       pCharacteristic->setValue("Magnet Off");
       pCharacteristic->notify();
+
+      if (popCount < MAX_EVENTS) {
+        Serial.println(time(nullptr));
+        popLog[popCount++] = time(nullptr);
+        printPopLog();
+      }
     }
     lastSensorState = 1;
   } 
