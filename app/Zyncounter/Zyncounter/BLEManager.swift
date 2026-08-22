@@ -53,14 +53,22 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        self.peripheral = nil
-        startScanning()
+        statusText = "Reconnecting to \(peripheral.name ?? "device")..."
+        central.connect(peripheral, options: [
+            CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnDisconnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnNotificationKey: true,
+        ])
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         characteristicValue = ""
-        self.peripheral = nil
-        startScanning()
+        statusText = "Reconnecting to \(peripheral.name ?? "device")..."
+        central.connect(peripheral, options: [
+            CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnDisconnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnNotificationKey: true,
+        ])
     }
 }
 
