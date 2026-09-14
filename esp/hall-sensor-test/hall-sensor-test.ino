@@ -28,6 +28,8 @@ bool ignoreNextEvent = false;
 const unsigned long AWAKE_DURATION_MS = 60000;
 unsigned long wakeMillis;
 
+portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
+
 void printPopLog() {
   Serial.println(popCount);
   for (int i = 0; i < popCount; i++) {
@@ -48,19 +50,22 @@ class ServerCallbacks : public BLEServerCallbacks {
     Serial.println("Client connected");
     digitalWrite(ledPin, LOW);
     eventReadCursor = 0;
+    wakeMillis = millis();
   }
 };
 
 void sendNextEvent(BLECharacteristic *pCharacteristic) {
-  if (eventReadCursor >= popCount) {
-    eventReadCursor = 0;
-    int64_t empty = 0;
-    pCharacteristic->setValue((uint8_t *)&empty, sizeof(empty));
-    return;
-  }
+  int64_t nextEvent = 0;
 
-  int64_t nextEvent = popLog[eventReadCursor];
-  eventReadCursor++;
+  portENTER_CRITICAL(&stateMux);
+  if (eventReadCursor < popCount) {
+    nextEvent = popLog[eventReadCursor];
+    eventReadCursor++;
+  } else {
+    eventReadCursor = 0;
+  }
+  portEXIT_CRITICAL(&stateMux);
+
   pCharacteristic->setValue((uint8_t *)&nextEvent, sizeof(nextEvent));
 }
 
@@ -97,13 +102,18 @@ class AckCharacteristicCallbacks : public BLECharacteristicCallbacks {
       return;
     }
 
-    int remaining = ackedCount >= popCount ? 0 : popCount - ackedCount;
-    Serial.printf("Acked %lld of %d events, %d remaining\n", (long long)ackedCount, popCount, remaining);
+    int remaining;
+    portENTER_CRITICAL(&stateMux);
+    remaining = ackedCount >= popCount ? 0 : popCount - ackedCount;
     for (int i = 0; i < remaining; i++) {
       popLog[i] = popLog[ackedCount + i];
     }
     popCount = remaining;
-    eventReadCursor = 0;
+    eventReadCursor = eventReadCursor > ackedCount ? eventReadCursor - ackedCount : 0;
+    portEXIT_CRITICAL(&stateMux);
+
+    Serial.printf("Acked %lld events, %d remaining\n", (long long)ackedCount, remaining);
+    wakeMillis = millis();
   }
 };
 
@@ -211,14 +221,25 @@ void loop() {
         ignoreNextEvent = false;
       } else if (!timeIsSynced) {
         Serial.println("Time not synced yet, dropping event");
-      } else if (popCount < MAX_EVENTS) {
+      } else {
         time_t newEvent = time(nullptr);
-        Serial.println(newEvent);
-        popLog[popCount++] = newEvent;
-        printPopLog();
-        pCharacteristic->setValue((uint8_t *)&newEvent, sizeof(newEvent));
-        pCharacteristic->notify();
-        eventReadCursor = popCount;
+        bool logged = false;
+
+        portENTER_CRITICAL(&stateMux);
+        if (popCount < MAX_EVENTS) {
+          popLog[popCount] = newEvent;
+          popCount++;
+          eventReadCursor = popCount;
+          logged = true;
+        }
+        portEXIT_CRITICAL(&stateMux);
+
+        if (logged) {
+          Serial.println(newEvent);
+          printPopLog();
+          pCharacteristic->setValue((uint8_t *)&newEvent, sizeof(newEvent));
+          pCharacteristic->notify();
+        }
       }
     }
     lastSensorState = 1;
