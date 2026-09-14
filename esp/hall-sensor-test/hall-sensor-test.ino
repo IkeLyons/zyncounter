@@ -20,6 +20,7 @@ int lastSensorState = -1;
 RTC_DATA_ATTR time_t popLog[MAX_EVENTS];
 RTC_DATA_ATTR int popCount = 0;
 int eventReadCursor = 0;
+bool timeIsSynced = false;
 
 void printPopLog() {
   Serial.println(popCount);
@@ -73,6 +74,7 @@ class TimeCharacteristicCallbacks : public BLECharacteristicCallbacks {
     memcpy(&epochSeconds, pTimeCharacteristic->getData(), sizeof(epochSeconds));
     struct timeval tv = { .tv_sec = epochSeconds, .tv_usec = 0 };
     settimeofday(&tv, NULL);
+    timeIsSynced = true;
     Serial.printf("System time set to %lld\n", (long long)epochSeconds);
   }
 };
@@ -132,7 +134,9 @@ void loop() {
     if (highCount == 5) {
       Serial.println("No Magnet");
 
-      if (popCount < MAX_EVENTS) {
+      if (!timeIsSynced) {
+        Serial.println("Time not synced yet, dropping event");
+      } else if (popCount < MAX_EVENTS) {
         time_t newEvent = time(nullptr);
         Serial.println(newEvent);
         popLog[popCount++] = newEvent;
