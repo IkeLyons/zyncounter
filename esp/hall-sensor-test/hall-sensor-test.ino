@@ -8,6 +8,7 @@
 #define SERVICE_UUID "96bde720-973d-4f43-820b-0cd2ff8b666c"
 #define CHARACTERISTIC_UUID "d5c94e7e-47e3-484d-897a-ea417b91b77a"
 #define TIME_CHARACTERISTIC_UUID "7677590e-7808-4e26-84e1-da269b480206"
+#define ACK_CHARACTERISTIC_UUID "1b1e6e3a-8f36-4c7b-9a2b-7a6e2d9c4f10"
 #define MAX_EVENTS 200
 
 const int ledPin = 2;
@@ -84,6 +85,28 @@ class TimeCharacteristicCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
+class AckCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pAckCharacteristic) {
+    if (pAckCharacteristic->getLength() != sizeof(int64_t)) {
+      return;
+    }
+
+    int64_t ackedCount;
+    memcpy(&ackedCount, pAckCharacteristic->getData(), sizeof(ackedCount));
+    if (ackedCount <= 0) {
+      return;
+    }
+
+    int remaining = ackedCount >= popCount ? 0 : popCount - ackedCount;
+    Serial.printf("Acked %lld of %d events, %d remaining\n", (long long)ackedCount, popCount, remaining);
+    for (int i = 0; i < remaining; i++) {
+      popLog[i] = popLog[ackedCount + i];
+    }
+    popCount = remaining;
+    eventReadCursor = 0;
+  }
+};
+
 void setupBLE() {
   BLEDevice::init("Zyncounter");
   BLEServer *pServer = BLEDevice::createServer();
@@ -99,6 +122,11 @@ void setupBLE() {
     TIME_CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_WRITE);
   pTimeCharacteristic->setCallbacks(new TimeCharacteristicCallbacks());
+
+  BLECharacteristic *pAckCharacteristic = pService->createCharacteristic(
+    ACK_CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_WRITE);
+  pAckCharacteristic->setCallbacks(new AckCharacteristicCallbacks());
 
   pService->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();

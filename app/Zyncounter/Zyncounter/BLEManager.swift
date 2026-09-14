@@ -17,6 +17,7 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
     static let serviceUUID = CBUUID(string: "96BDE720-973D-4F43-820B-0CD2FF8B666C")
     static let characteristicUUID = CBUUID(string: "D5C94E7E-47E3-484D-897A-EA417B91B77A")
     static let timeCharacteristicUUID = CBUUID(string: "7677590E-7808-4E26-84E1-DA269B480206")
+    static let ackCharacteristicUUID = CBUUID(string: "1B1E6E3A-8F36-4C7B-9A2B-7A6E2D9C4F10")
 
     static let restoreIdentifier = "com.zyncounter.centralManager"
 
@@ -33,6 +34,8 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
 
     private var centralManager: CBCentralManager!
     private var zyncounter: CBPeripheral?
+    private var ackCharacteristic: CBCharacteristic?
+    private var pendingAckCount: Int64 = 0
 
     private override init() {
         super.init()
@@ -102,7 +105,7 @@ final class BLEManager: NSObject, CBCentralManagerDelegate {
 extension BLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         for service in peripheral.services ?? [] {
-            peripheral.discoverCharacteristics([Self.characteristicUUID, Self.timeCharacteristicUUID], for: service)
+            peripheral.discoverCharacteristics([Self.characteristicUUID, Self.timeCharacteristicUUID, Self.ackCharacteristicUUID], for: service)
         }
     }
 
@@ -117,6 +120,9 @@ extension BLEManager: CBPeripheralDelegate {
             let data = Data(bytes: &epochSeconds, count: MemoryLayout<Int64>.size)
             peripheral.writeValue(data, for: timeCharacteristic, type: .withResponse)
         }
+
+        ackCharacteristic = service.characteristics?.first(where: { $0.uuid == Self.ackCharacteristicUUID })
+        pendingAckCount = 0
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -126,9 +132,21 @@ extension BLEManager: CBPeripheralDelegate {
               data.count == MemoryLayout<Int64>.size else { return }
 
         let epochSeconds = data.withUnsafeBytes { $0.load(as: Int64.self) }
-        guard epochSeconds != 0 else { return }
+        guard epochSeconds != 0 else {
+            sendAck(peripheral)
+            return
+        }
 
         receivedTimestamps.append(Date(timeIntervalSince1970: TimeInterval(epochSeconds)))
+        pendingAckCount += 1
         peripheral.readValue(for: characteristic)
+    }
+
+    private func sendAck(_ peripheral: CBPeripheral) {
+        guard pendingAckCount > 0, let ackCharacteristic else { return }
+        var count = pendingAckCount
+        let data = Data(bytes: &count, count: MemoryLayout<Int64>.size)
+        peripheral.writeValue(data, for: ackCharacteristic, type: .withResponse)
+        pendingAckCount = 0
     }
 }
