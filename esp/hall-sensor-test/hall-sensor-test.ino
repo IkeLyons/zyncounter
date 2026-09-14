@@ -133,11 +133,13 @@ void loop() {
       Serial.println("No Magnet");
 
       if (popCount < MAX_EVENTS) {
-        Serial.println(time(nullptr));
-        popLog[popCount++] = time(nullptr);
+        time_t newEvent = time(nullptr);
+        Serial.println(newEvent);
+        popLog[popCount++] = newEvent;
         printPopLog();
-        sendNextEvent(pCharacteristic);
+        pCharacteristic->setValue((uint8_t *)&newEvent, sizeof(newEvent));
         pCharacteristic->notify();
+        eventReadCursor = popCount;
       }
     }
     lastSensorState = 1;
