@@ -3,6 +3,7 @@
 #include <BLEServer.h>
 #include <BLE2902.h>
 #include <sys/time.h>
+#include <esp_sleep.h>
 
 #define SERVICE_UUID "96bde720-973d-4f43-820b-0cd2ff8b666c"
 #define CHARACTERISTIC_UUID "d5c94e7e-47e3-484d-897a-ea417b91b77a"
@@ -20,8 +21,11 @@ int lastSensorState = -1;
 RTC_DATA_ATTR time_t popLog[MAX_EVENTS];
 RTC_DATA_ATTR int popCount = 0;
 int eventReadCursor = 0;
-bool timeIsSynced = false;
+RTC_DATA_ATTR bool timeIsSynced = false;
 bool ignoreNextEvent = false;
+
+const unsigned long AWAKE_DURATION_MS = 60000;
+unsigned long wakeMillis;
 
 void printPopLog() {
   Serial.println(popCount);
@@ -105,17 +109,47 @@ void setupBLE() {
   BLEDevice::startAdvertising();
 }
 
+void logWakeReason() {
+  switch (esp_sleep_get_wakeup_cause()) {
+    case ESP_SLEEP_WAKEUP_EXT0:
+      Serial.println("Woke up: hall sensor");
+      break;
+    case ESP_SLEEP_WAKEUP_EXT1:
+      Serial.println("Woke up: button");
+      break;
+    default:
+      Serial.println("Fresh boot");
+      break;
+  }
+}
+
 void setup() {
   Serial.begin(9600);
+  logWakeReason();
+
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, HIGH);
-  delay(2000);
+  pinMode(hallSensorPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
 
   setupBLE();
 
-  pinMode(hallSensorPin, INPUT);
-  pinMode(buttonPin, INPUT_PULLUP);
+  wakeMillis = millis();
   Serial.println("Hall Effect Sensor Test");
+}
+
+void goToSleep() {
+  Serial.println("Waiting for sensor/button to clear before sleeping...");
+  while (digitalRead(hallSensorPin) == HIGH || digitalRead(buttonPin) == LOW) {
+    delay(100);
+  }
+
+  Serial.println("Going to sleep");
+  Serial.flush();
+
+  esp_sleep_enable_ext0_wakeup((gpio_num_t)hallSensorPin, 1);
+  esp_sleep_enable_ext1_wakeup(1ULL << buttonPin, ESP_EXT1_WAKEUP_ALL_LOW);
+  esp_deep_sleep_start();
 }
 
 void loop() {
@@ -124,21 +158,25 @@ void loop() {
 
   if (buttonPressed) {
     ignoreNextEvent = true;
+    wakeMillis = millis();
   }
 
   if (sensorState == LOW) {
     highCount = 0;
     if (sensorState != lastSensorState) {
       Serial.println("Magnet Detected");
+      wakeMillis = millis();
     }
     lastSensorState = 0;
   } else {
     highCount++;
     if (highCount == 0) {
       Serial.println("First detected magnet absence");
+      wakeMillis = millis();
     }
     if (highCount == 5) {
       Serial.println("No Magnet");
+      wakeMillis = millis();
 
       if (ignoreNextEvent) {
         Serial.println("Event ignored due to button press");
@@ -160,6 +198,10 @@ void loop() {
 
   if (buttonPressed) {
     Serial.println("Button Pressed");
+  }
+
+  if (millis() - wakeMillis >= AWAKE_DURATION_MS) {
+    goToSleep();
   }
 
   delay(100);
