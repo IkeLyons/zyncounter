@@ -8,12 +8,14 @@
 import SwiftUI
 
 struct Zyncounter: View {
-    @State private var bleManager = BLEManager()
+    @State private var bleManager = BLEManager.shared
 
     var body: some View {
         VStack {
             Text(bleManager.statusText)
-            Text(bleManager.characteristicValue)
+            ForEach(bleManager.receivedTimestamps, id: \.self) { timestamp in
+                Text(timestamp.formatted())
+            }
         }
         .padding()
     }

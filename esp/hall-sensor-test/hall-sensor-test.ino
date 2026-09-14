@@ -19,6 +19,7 @@ int lastSensorState = -1;
 
 RTC_DATA_ATTR time_t popLog[MAX_EVENTS];
 RTC_DATA_ATTR int popCount = 0;
+int eventReadCursor = 0;
 
 void printPopLog() {
   Serial.println(popCount);
@@ -39,6 +40,26 @@ class ServerCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer *pServer) {
     Serial.println("Client connected");
     digitalWrite(ledPin, LOW);
+    eventReadCursor = 0;
+  }
+};
+
+void sendNextEvent(BLECharacteristic *pCharacteristic) {
+  if (eventReadCursor >= popCount) {
+    eventReadCursor = 0;
+    int64_t empty = 0;
+    pCharacteristic->setValue((uint8_t *)&empty, sizeof(empty));
+    return;
+  }
+
+  int64_t nextEvent = popLog[eventReadCursor];
+  eventReadCursor++;
+  pCharacteristic->setValue((uint8_t *)&nextEvent, sizeof(nextEvent));
+}
+
+class EventsCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onRead(BLECharacteristic *pCharacteristic) {
+    sendNextEvent(pCharacteristic);
   }
 };
 
@@ -63,15 +84,15 @@ void setupBLE() {
   BLEService *pService = pServer->createService(SERVICE_UUID);
   pCharacteristic = pService->createCharacteristic(
     CHARACTERISTIC_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_NOTIFY);
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
   pCharacteristic->addDescriptor(new BLE2902());
+  pCharacteristic->setCallbacks(new EventsCharacteristicCallbacks());
 
   BLECharacteristic *pTimeCharacteristic = pService->createCharacteristic(
     TIME_CHARACTERISTIC_UUID,
     BLECharacteristic::PROPERTY_WRITE);
   pTimeCharacteristic->setCallbacks(new TimeCharacteristicCallbacks());
 
-  pCharacteristic->setValue("Magnet Off");
   pService->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
@@ -99,10 +120,8 @@ void loop() {
 
   if (sensorState == LOW) {
     highCount = 0;
-    pCharacteristic->setValue("Magnet On");
     if (sensorState != lastSensorState) {
       Serial.println("Magnet Detected");
-      pCharacteristic->notify();
     }
     lastSensorState = 0;
   } else {
@@ -112,13 +131,13 @@ void loop() {
     }
     if (highCount == 5) {
       Serial.println("No Magnet");
-      pCharacteristic->setValue("Magnet Off");
-      pCharacteristic->notify();
 
       if (popCount < MAX_EVENTS) {
         Serial.println(time(nullptr));
         popLog[popCount++] = time(nullptr);
         printPopLog();
+        sendNextEvent(pCharacteristic);
+        pCharacteristic->notify();
       }
     }
     lastSensorState = 1;
