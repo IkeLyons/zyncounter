@@ -21,6 +21,7 @@ RTC_DATA_ATTR time_t popLog[MAX_EVENTS];
 RTC_DATA_ATTR int popCount = 0;
 int eventReadCursor = 0;
 bool timeIsSynced = false;
+bool ignoreNextEvent = false;
 
 void printPopLog() {
   Serial.println(popCount);
@@ -119,6 +120,11 @@ void setup() {
 
 void loop() {
   int sensorState = digitalRead(hallSensorPin);
+  bool buttonPressed = digitalRead(buttonPin) == LOW;
+
+  if (buttonPressed) {
+    ignoreNextEvent = true;
+  }
 
   if (sensorState == LOW) {
     highCount = 0;
@@ -134,7 +140,10 @@ void loop() {
     if (highCount == 5) {
       Serial.println("No Magnet");
 
-      if (!timeIsSynced) {
+      if (ignoreNextEvent) {
+        Serial.println("Event ignored due to button press");
+        ignoreNextEvent = false;
+      } else if (!timeIsSynced) {
         Serial.println("Time not synced yet, dropping event");
       } else if (popCount < MAX_EVENTS) {
         time_t newEvent = time(nullptr);
@@ -149,7 +158,7 @@ void loop() {
     lastSensorState = 1;
   } 
 
-  if (digitalRead(buttonPin) == LOW) {
+  if (buttonPressed) {
     Serial.println("Button Pressed");
   }
 
